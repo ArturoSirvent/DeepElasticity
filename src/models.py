@@ -74,7 +74,7 @@ class PINN(DNN):
         Esta clase hace el registro de todos los parámetros, los cálculos de derivadas y de losses
         Y aplica las restricciones que hagan falta
     '''
-    def __init__(self, layers,init_values={"nu":None,"E":None,"alpha":None,"E_ref":None},use_of_alpha=True,device=None,separate_data_losses=True,loss_weights={"Data":1,"PDE":1,"BC":1}):
+    def __init__(self, layers,init_values={"nu":None,"E":None,"alpha":None,"E_ref":None},use_of_alpha=True,device=None,separate_data_losses=True,loss_weights_init={"data":1,"PDE":1,"BC":1}):
         super().__init__(layers)
         
         if device is None:
@@ -85,12 +85,12 @@ class PINN(DNN):
 
 
         #History of losses
-        self.loss_history = {"Data": [],
+        self.loss_history = {"data": [],
                              "PDE": [],
                              "BC": [],
                              "Total":[]}
         
-        self.loss_weights_init=loss_weights
+        self.loss_weights_init=loss_weights_init
 
         self.separate_data_losses=separate_data_losses
         self.params_history = { "E": [] }
@@ -113,47 +113,56 @@ class PINN(DNN):
         #podemos tener dos None, y se equilibran entre ellos, y tambien podemos tener los 3, pero no 1 solo none
         claves_none = [key for key, value in self.loss_weights_init.items() if value is None]
         claves_no_none = [key for key, value in self.loss_weights_init.items() if value is not None]
-
+        self.claves_w_name_params=None
         assert len(claves_none)+len(claves_no_none)==3,"Algun error con las los pesos"
         if len(claves_none) in [2,3]:
+            self.claves_params=[f"w_{i}" for i in claves_none[:(len(claves_none)-1)]]
             #entonces las nones se equilibran entre ellas 
             suma_aux=0
-            for clave in claves_none[:(len(claves_none)-1)]:
-                if clave=="Data":
-                    self.w_data=nn.Parameter(torch.rand(1,dtype=torch.float32).to(self.device))
-                    self.params_history["w_data"]= []
-                    suma_aux+=self.w_data.item()
-                elif clave=="PDE":
-                    self.w_PDE=nn.Parameter(torch.rand(1,dtype=torch.float32).to(self.device))
-                    self.params_history["w_PDE"]= []
-                    suma_aux+=self.w_PDE.item()
-                elif clave=="BC":
-                    self.w_BC=nn.Parameter(torch.rand(1,dtype=torch.float32).to(self.device))
-                    self.params_history["w_BC"]= []
-                    suma_aux+=self.w_BC.item()
+            for clave in self.claves_params:
+                setattr(self,clave,nn.Parameter(torch.rand(1,dtype=torch.float32).to(self.device)*(1-suma_aux)))
+                suma_aux+=getattr(self, clave).item()
+                self.params_history[clave] = []
+
+                # if clave=="data":
+                #     self.w_data=nn.Parameter(torch.rand(1,dtype=torch.float32).to(self.device))
+                #     self.params_history["w_data"]= []
+                #     suma_aux+=self.w_data.item()
+                # elif clave=="PDE":
+                #     self.w_PDE=nn.Parameter(torch.rand(1,dtype=torch.float32).to(self.device))
+                #     self.params_history["w_PDE"]= []
+                #     suma_aux+=self.w_PDE.item()
+                # elif clave=="BC":
+                #     self.w_BC=nn.Parameter(torch.rand(1,dtype=torch.float32).to(self.device))
+                #     self.params_history["w_BC"]= []
+                #     suma_aux+=self.w_BC.item()
 
             # y el que no es none se equilibra
-            if claves_none[(len(claves_none)-1)]=="Data":
-                self.w_data=torch.tensor(1-suma_aux,dtype=torch.float32).to(self.device)
-                self.params_history["w_data"]= []
-            elif claves_none[(len(claves_none)-1)]=="PDE":
-                self.w_PDE=torch.tensor(1-suma_aux,dtype=torch.float32).to(self.device)
-                self.params_history["w_PDE"]= []
-            elif claves_none[(len(claves_none)-1)]=="BC":
-                self.w_BC=torch.tensor(1-suma_aux,dtype=torch.float32).to(self.device)
-                self.params_history["w_BC"]= []
+            # if claves_none[(len(claves_none)-1)]=="data":
+            #     self.w_data=torch.tensor(1-suma_aux,dtype=torch.float32).to(self.device)
+            #     self.params_history["w_data"]= []
+            # elif claves_none[(len(claves_none)-1)]=="PDE":
+            #     self.w_PDE=torch.tensor(1-suma_aux,dtype=torch.float32).to(self.device)
+            #     self.params_history["w_PDE"]= []
+            # elif claves_none[(len(claves_none)-1)]=="BC":
+            #     self.w_BC=torch.tensor(1-suma_aux,dtype=torch.float32).to(self.device)
+            #     self.params_history["w_BC"]= []
+            self.name_w_updatable=f"w_{claves_none[(len(claves_none)-1)]}"    
+            setattr(self, self.name_w_updatable, torch.tensor(1 - suma_aux, dtype=torch.float32).to(self.device))
+            self.params_history[self.name_w_updatable] = []
 
         
         else:
             raise Exception
 
         for clave in claves_no_none:
-            if clave=="Data":
-                self.w_data=self.loss_weights_init["Data"]
-            elif clave=="PDE":
-                self.w_PDE=self.loss_weights_init["PDE"]
-            elif clave=="BC":
-                self.w_BC=self.loss_weights_init["BC"]
+            setattr(self,f"w_{clave}",self.loss_weights_init[clave])
+            # if clave=="data":
+            #     self.w_data=self.loss_weights_init["data"]
+            # elif clave=="PDE":
+            #     self.w_PDE=self.loss_weights_init["PDE"]
+            # elif clave=="BC":
+            #     self.w_BC=self.loss_weights_init["BC"]
 
 
         #damos la opción de que algunos de los pesos de ajusten de forma automática por la red, como propios parámetros
@@ -263,7 +272,7 @@ class PINN(DNN):
             value_loss_data=self.loss_function(u_predict,desp_reales)
 
         if save:
-            self.loss_history["Data"].append(value_loss_data.item())#.to('cpu').detach().numpy())
+            self.loss_history["data"].append(value_loss_data.item())#.to('cpu').detach().numpy())
         
         return value_loss_data
     
@@ -276,6 +285,13 @@ class PINN(DNN):
 
         if self.use_of_alpha:
             self.E=(1+self.alpha)*self.E_ref
+
+        #hay un peso de los weigts que debe de actualizarse si se están actualizando
+        if self.name_w_updatable:
+            suma_aux=sum([getattr(self,i).item() for i in self.claves_params])
+            setattr(self, self.name_w_updatable, torch.tensor(1 - suma_aux, dtype=torch.float32).to(self.device))
+
+
 
         value_loss_PCE=self.loss_PDE(pos_colloc,save=save)
         value_loss_BC=self.loss_BC(pos_BC,sigmas_BC,save=save)
@@ -369,7 +385,7 @@ class PINN_mixedForm(DNN):
 
         Esto será la aprox mixta con el primero el desplazamiento y el segungo la tensión (realmente son 6 componentes).
     '''
-    def __init__(self, layers,init_values=None,device=None,separate_data_losses=True,loss_weights={"Data":1,"PDE":1,"BC":1,"EC":1}):
+    def __init__(self, layers,init_values=None,device=None,separate_data_losses=True,loss_weights={"data":1,"PDE":1,"BC":1,"EC":1}):
         super().__init__(layers)
         
         if device is None:
@@ -380,7 +396,7 @@ class PINN_mixedForm(DNN):
 
 
         #History of losses
-        self.loss_history = {"Data": [],
+        self.loss_history = {"data": [],
                              "PDE": [],
                              "BC": [],
                              "EC":[],
@@ -397,7 +413,7 @@ class PINN_mixedForm(DNN):
         self.separate_data_losses=separate_data_losses
         self.loss_function = nn.MSELoss(reduction ='mean')
 
-        self.w_data=loss_weights["Data"]
+        self.w_data=loss_weights["data"]
         self.w_PDE=loss_weights["PDE"]
         self.w_BC=loss_weights["BC"]
         self.w_EC=loss_weights["EC"]
@@ -490,7 +506,7 @@ class PINN_mixedForm(DNN):
             value_loss_data=self.loss_function(u_predict,desp_reales)
 
         if save:
-            self.loss_history["Data"].append(value_loss_data.item())#.to('cpu').detach().numpy())
+            self.loss_history["data"].append(value_loss_data.item())#.to('cpu').detach().numpy())
         
         return value_loss_data
     
