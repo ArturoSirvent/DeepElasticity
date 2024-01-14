@@ -25,9 +25,10 @@ from plotly.subplots import make_subplots
 # Red neuronal  
 
 class DNN(nn.Module):
-    def __init__(self,layers,init_w="xavier"):
+    def __init__(self,layers,init_w="xavier",normalize_inputs=False):
         super().__init__() 
         self.layers=layers
+        self.normalize_inputs=normalize_inputs
         self.activation = nn.Tanh()
         self.linears = nn.ModuleList([nn.Linear(layers[i], layers[i+1]) for i in range(len(layers) - 1)])
     
@@ -49,8 +50,8 @@ class DNN(nn.Module):
               
         if torch.is_tensor(x) != True:         
             x = torch.from_numpy(x)             
-
-        #xn = normalize(x, Pos_min, Pos_max)
+        # if self.normalize_inputs:
+        #     xn = normalize(x, Pos_min, Pos_max)
 
         # convert to float
         a = x.float()
@@ -74,7 +75,7 @@ class PINN(DNN):
         Esta clase hace el registro de todos los parámetros, los cálculos de derivadas y de losses
         Y aplica las restricciones que hagan falta
     '''
-    def __init__(self, layers,init_values={"nu":None,"E":None,"alpha":None,"E_ref":None},use_of_alpha=True,device=None,separate_data_losses=True,loss_weights_init={"data":1,"PDE":1,"BC":1}):
+    def __init__(self, layers,init_values={"nu":None,"E":None,"alpha":None,"E_ref":None},train_E=True,use_of_alpha=True,device=None,separate_data_losses=True,loss_weights_init={"data":1,"PDE":1,"BC":1}):
         super().__init__(layers)
         
         if device is None:
@@ -93,18 +94,22 @@ class PINN(DNN):
         self.loss_weights_init=loss_weights_init
 
         self.separate_data_losses=separate_data_losses
-        self.params_history = { "E": [] }
+        self.params_history ={} #{ "E": [] }
         self.use_of_alpha=use_of_alpha
         if self.use_of_alpha:
             #Parameters trials
+            self.params_history["E"]= []
             self.params_history["alpha"]= []
 
             self.alpha = nn.Parameter(torch.tensor(init_values["alpha"],dtype=torch.float32).to(self.device))
             self.E_ref = init_values["E_ref"]
             self.E = torch.tensor((1+self.alpha)*self.E_ref,dtype=torch.float32).to(self.device)
-        else:
-            self.E = nn.Parameter(torch.tensor(init_values["E"],dtype=torch.float32).to(self.device))
+        elif train_E:
+            self.params_history["E"]= []
 
+            self.E = nn.Parameter(torch.tensor(init_values["E"],dtype=torch.float32).to(self.device))
+        else:
+            self.E = torch.tensor(init_values["E"],dtype=torch.float32).to(self.device)
         #inicialización de parametros
         self.nu = init_values["nu"]
         self.loss_function = nn.MSELoss(reduction ='mean')
@@ -113,76 +118,30 @@ class PINN(DNN):
         #podemos tener dos None, y se equilibran entre ellos, y tambien podemos tener los 3, pero no 1 solo none
         claves_none = [key for key, value in self.loss_weights_init.items() if value is None]
         claves_no_none = [key for key, value in self.loss_weights_init.items() if value is not None]
-        self.claves_w_name_params=None
-        assert len(claves_none)+len(claves_no_none)==3,"Algun error con las los pesos"
+        self.claves_params=None
+        assert len(claves_none)+len(claves_no_none)==3,"Algun error con los pesos"
         if len(claves_none) in [2,3]:
             self.claves_params=[f"w_{i}" for i in claves_none[:(len(claves_none)-1)]]
             #entonces las nones se equilibran entre ellas 
             suma_aux=0
+            #para todas las que tiene libre variación
             for clave in self.claves_params:
                 setattr(self,clave,nn.Parameter(torch.rand(1,dtype=torch.float32).to(self.device)*(1-suma_aux)))
                 suma_aux+=getattr(self, clave).item()
                 self.params_history[clave] = []
 
-                # if clave=="data":
-                #     self.w_data=nn.Parameter(torch.rand(1,dtype=torch.float32).to(self.device))
-                #     self.params_history["w_data"]= []
-                #     suma_aux+=self.w_data.item()
-                # elif clave=="PDE":
-                #     self.w_PDE=nn.Parameter(torch.rand(1,dtype=torch.float32).to(self.device))
-                #     self.params_history["w_PDE"]= []
-                #     suma_aux+=self.w_PDE.item()
-                # elif clave=="BC":
-                #     self.w_BC=nn.Parameter(torch.rand(1,dtype=torch.float32).to(self.device))
-                #     self.params_history["w_BC"]= []
-                #     suma_aux+=self.w_BC.item()
-
-            # y el que no es none se equilibra
-            # if claves_none[(len(claves_none)-1)]=="data":
-            #     self.w_data=torch.tensor(1-suma_aux,dtype=torch.float32).to(self.device)
-            #     self.params_history["w_data"]= []
-            # elif claves_none[(len(claves_none)-1)]=="PDE":
-            #     self.w_PDE=torch.tensor(1-suma_aux,dtype=torch.float32).to(self.device)
-            #     self.params_history["w_PDE"]= []
-            # elif claves_none[(len(claves_none)-1)]=="BC":
-            #     self.w_BC=torch.tensor(1-suma_aux,dtype=torch.float32).to(self.device)
-            #     self.params_history["w_BC"]= []
+            #esta dependerá de las otras para que todo sume 1
             self.name_w_updatable=f"w_{claves_none[(len(claves_none)-1)]}"    
             setattr(self, self.name_w_updatable, torch.tensor(1 - suma_aux, dtype=torch.float32).to(self.device))
             self.params_history[self.name_w_updatable] = []
-
-        
+        elif len(claves_none)==0 :
+            pass
         else:
-            raise Exception
+            raise Exception("no puede variar solo 1 termino, 2 o 3")
 
         for clave in claves_no_none:
             setattr(self,f"w_{clave}",self.loss_weights_init[clave])
-            # if clave=="data":
-            #     self.w_data=self.loss_weights_init["data"]
-            # elif clave=="PDE":
-            #     self.w_PDE=self.loss_weights_init["PDE"]
-            # elif clave=="BC":
-            #     self.w_BC=self.loss_weights_init["BC"]
 
-
-        #damos la opción de que algunos de los pesos de ajusten de forma automática por la red, como propios parámetros
-        # if self.loss_weights_init["Data"] is None:
-        #     self.w_data=nn.Parameter(torch.rand(1,dtype=torch.float32).to(self.device))
-        #     self.params_history["w_data"]= []
-        # else:
-        #     self.w_data=self.loss_weights_init["Data"]
-
-        # if self.loss_weights_init["PDE"] is None:
-        #     self.w_PDE=nn.Parameter(torch.rand(1,dtype=torch.float32).to(self.device))
-        #     self.params_history["w_PDE"]= []
-        # else:
-        #     self.w_PDE=self.loss_weights_init["PDE"]
-
-        # if self.loss_weights_init["BC"] is None:
-        #     self.w_BC=nn.Parameter(torch.rand(1,dtype=torch.float32).to(self.device))
-        #     self.params_history["w_BC"]= []
-        # else:    
-        #     self.w_BC=self.loss_weights_init["BC"]
 
         #esto es para el closure para el optimizador    
         self.iter_n=0
@@ -254,8 +213,6 @@ class PINN(DNN):
 
         return value_loss_BC
 
-    #def loss_DBC(fix_nodes)
-    #   pass
 
     def loss_data(self, pos_reales,desp_reales,save=True):
         #pos_reales=pos_reales.to(device)
@@ -286,10 +243,19 @@ class PINN(DNN):
         if self.use_of_alpha:
             self.E=(1+self.alpha)*self.E_ref
 
-        #hay un peso de los weigts que debe de actualizarse si se están actualizando
-        if self.name_w_updatable:
-            suma_aux=sum([getattr(self,i).item() for i in self.claves_params])
-            setattr(self, self.name_w_updatable, torch.tensor(1 - suma_aux, dtype=torch.float32).to(self.device))
+        # #imponemos que se eviten valores de E negativos 
+        # self.E = self.E if self.E.item()>0 else self.E * -1
+
+        #los pesos deben ser positivos
+        if self.claves_params:
+            for clave in self.claves_params:
+                setattr(self, clave, torch.clamp(getattr(self,clave),min=0))
+
+            #hay un peso de los weigts que debe de actualizarse si se están actualizando
+            if self.name_w_updatable:
+                suma_aux=sum([getattr(self,i).item() for i in self.claves_params])
+                setattr(self, self.name_w_updatable, torch.tensor(1 - suma_aux, dtype=torch.float32).to(self.device))
+
 
 
 
@@ -300,9 +266,10 @@ class PINN(DNN):
 
         if save: 
             #self.params_history["nu"].append(self.nu)#self.nu.to('cpu').detach().numpy())
-            for key in self.params_history:
-                valor_variable = getattr(self, key).item()#.to('cpu').detach().numpy()
-                self.params_history[key].append(valor_variable)
+            if self.params_history:
+                for key in self.params_history:
+                    valor_variable = getattr(self, key).item()#.to('cpu').detach().numpy()
+                    self.params_history[key].append(valor_variable)
 
             self.loss_history["Total"].append(value_loss.item())#.to('cpu').detach().numpy())
 

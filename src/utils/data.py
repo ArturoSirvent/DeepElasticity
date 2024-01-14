@@ -7,9 +7,7 @@ import pandas as pd
 import numpy as np
 import re 
 import random
-import json 
-import time
-import plotly.express as px
+
 from dataclasses import dataclass
 
 def keep_line(line):
@@ -29,6 +27,7 @@ class Data:
     load_stage: int
     base_dir:str = "/home/arturo/Documents/programacion_stuff/DeepElasticity/data/001-LinearElasticity"
     E: str = None
+    #===== not seteables ====
     initialPosition_data_pd: pd.DataFrame =None
     stress_data_pd: pd.DataFrame =None
     displacement_data_pd: pd.DataFrame=None
