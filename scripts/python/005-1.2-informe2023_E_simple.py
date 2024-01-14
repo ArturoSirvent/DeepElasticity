@@ -7,7 +7,6 @@ from src.utils.data import Data
 from src.models import PINN  
 from src.train import Trainer
 import torch 
-import matplotlib.pyplot as plt 
 import time
 from datetime import datetime
 import pickle

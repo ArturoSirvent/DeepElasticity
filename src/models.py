@@ -5,21 +5,7 @@
 
 import torch
 import torch.autograd as autograd         # computation graph
-from torch import Tensor                  # tensor node in the computation graph
 import torch.nn as nn                     # neural networks
-import torch.optim as optim               # optimizers e.g. gradient descent, ADAM, etc.
-import pandas as pd
-import matplotlib.pyplot as plt
-import numpy as np
-import time
-import re 
-import random
-import json 
-import time
-import plotly.express as px
-from dataclasses import dataclass      
-import plotly.graph_objs as go
-from plotly.subplots import make_subplots
 
 
 # Red neuronal  
