@@ -82,7 +82,8 @@ class PINN(DNN):
         self.separate_data_losses=separate_data_losses
         self.params_history ={} #{ "E": [] }
         self.use_of_alpha=use_of_alpha
-        if self.use_of_alpha:
+        self.train_E=train_E
+        if self.use_of_alpha and self.train_E:
             #Parameters trials
             self.params_history["E"]= []
             self.params_history["alpha"]= []
@@ -226,7 +227,7 @@ class PINN(DNN):
 
         #actualizamos E antes de calcular nada
 
-        if self.use_of_alpha:
+        if self.use_of_alpha and self.train_E:
             self.E=(1+self.alpha)*self.E_ref
 
         # #imponemos que se eviten valores de E negativos 
