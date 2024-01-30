@@ -4,7 +4,7 @@ import sys
 sys.path.append(BASE_DIR)
 DATA_DIR=os.path.join(BASE_DIR,"data/001-LinearElasticity")
 from src.utils.data import Data
-from src.models import PINN  
+from src.PINN import PINN  
 from src.train import Trainer
 import torch 
 import time
@@ -29,7 +29,7 @@ os.makedirs(DAILY_RESULTADOS_DIR,exist_ok=True)
 E_options=["0.020","0.040","0.050","0.060","0.005","0.009","0.032"]
 E_refs=[0.001,0.01,0.1]
 loss_weights_init={"data":1e1,"PDE":1e5,"BC":1e6}
-pinn_arch=[3,80,80,80,80,80,3]
+pinn_arch=[3,50,50,50,50,3]
 
 historial_E_train={}
 for i,E_real_str in enumerate(E_options):
@@ -42,7 +42,7 @@ for i,E_real_str in enumerate(E_options):
         print(f"\t E_ref: {E_ref}")
 
         time_init=time.time()
-        init_values={"nu":.4,"alpha":1,"E_ref":E_ref}
+        init_values={"nu":.4,"alpha":0.01,"E_ref":E_ref}
         pinn=PINN(pinn_arch,use_of_alpha=True,init_values=init_values,loss_weights_init=loss_weights_init)
         step_dict = {
             "step_1": {"optim": torch.optim.Adam(pinn.parameters(), lr=1e-2), 

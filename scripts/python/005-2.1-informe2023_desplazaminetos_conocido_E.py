@@ -4,7 +4,7 @@ import sys
 sys.path.append(BASE_DIR)
 DATA_DIR=os.path.join(BASE_DIR,"data/001-LinearElasticity")
 from src.utils.data import Data
-from src.models import PINN  
+from src.PINN import PINN  
 from src.train import Trainer
 import torch 
 import time
