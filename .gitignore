@@ -163,3 +163,14 @@ cython_debug/
 #docs
 *.pdf
 *.pkl
+
+
+#data 
+data
+
+#funcs 
+
+FUNCIONES
+FUNCIONES.zip
+#informes
+informes

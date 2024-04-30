@@ -6,7 +6,7 @@
 import torch
 import torch.autograd as autograd         # computation graph
 import torch.nn as nn                     # neural networks
-
+import numpy as np 
 
 # Red neuronal  
 
@@ -571,3 +571,353 @@ class PINN_mixedForm(DNN):
             
         
         return loss
+    
+
+
+# modelo hiperelastico Neo-Hookeano   
+class PINN_NeoHook(DNN):
+    def __init__(self, layers,init_lame1,init_lame2):
+        super().__init__(layers)
+        self.device= "cuda" if torch.cuda.is_available() else "cpu"
+        self.to(self.device)    
+
+        'Define loss function'
+        self.loss_function = torch.nn.MSELoss(reduction ='mean')
+        
+        'Initialize iterator'
+        self.iter = 0
+        
+        'Initialize our new parameter mu and bulk as tensor (Inverse problem)' 
+        self.lame1 =torch.tensor([float(init_lame1)]).to(self.device)# nn.Parameter(torch.tensor([float(init_lame1)], requires_grad=True).float().to(device))
+        self.lame2 = nn.Parameter(torch.tensor([float(init_lame2)], requires_grad=True).float().to(self.device))
+        #self.density = torch.tensor([float(rho)], requires_grad=True).float()
+        
+        'History of losses'
+        self.loss_history = {"Data": [],
+                             "PDE": [],
+                             "symmetry": [],
+                             "BC": [],
+                             "Total":[]}
+        'Parameters trials'
+        self.params_history = {"lame2": [] } #"lame1": [],
+                                
+        
+    
+    def loss_data(self,pos_real, despl_real, save = False):
+        u_nn = self(pos_real)
+        loss = self.loss_function(u_nn, despl_real)
+
+        save and self.loss_history["Data"].append(loss.to('cpu').detach().numpy()) 
+        
+        return loss
+        
+    def loss_physics(self, pos_f, save = False):
+        pos_f=pos_f.to(torch.float32)
+        num_points = pos_f.shape[0]
+        
+        eyes = torch.eye(3).repeat(num_points,1,1).to(self.device)
+
+        X,Y,Z = self.compute_XYZ(pos_f)
+
+        u, v, w = self.compute_displacements(X,Y,Z)
+
+        F = self.compute_F(u, v, w, X, Y, Z, eye=eyes)
+
+        C = self.compute_C(F)
+
+        S = self.compute_S(C, material="Neo-Hookean-FEBIO", eye=eyes)
+
+        P = self.compute_P(F,S)
+
+        div_P = self.compute_div_P(P, X, Y, Z)        
+
+        # Computing the mass force tensor
+        # massForce = compute_mass_force(self.density, num_points)
+
+        # Computing Res = 0
+        eq_residual = div_P #+ massForce
+
+        # Res_hat is just an auxiliar term to copmute the loss (is zero)
+        eq_residual_ground_truth = torch.zeros_like(eq_residual).to(self.device)
+
+        # Computing the Physics Loss
+        loss_equilibrium = self.loss_function(eq_residual, eq_residual_ground_truth)
+
+        loss_symmetry = self.compute_loss_symmetry(P, F)
+
+        save and self.loss_history["symmetry"].append(loss_symmetry.to('cpu').detach().numpy())
+        save and self.loss_history["PDE"].append(loss_equilibrium.to('cpu').detach().numpy()) 
+
+        return loss_equilibrium, loss_symmetry
+
+    def compute_XYZ(self, positions):
+        # clone the input data and add AD
+        pos = positions.clone().to(self.device)
+        X = pos[:,0].reshape(-1,1).to(self.device)
+        
+        Y = pos[:,1].reshape(-1,1).to(self.device)
+        
+        Z = pos[:,2].reshape(-1,1).to(self.device)
+        
+        return X, Y, Z
+
+    def compute_displacements(self, X, Y, Z):
+        XYZ = torch.cat((X,Y,Z), dim=1).to(self.device)
+
+        # Compute the output of the DNN
+        U = self(XYZ)            
+
+        # Separating vector of directional displacements
+        u = U[:,0].reshape(-1,1).to(self.device)
+        v = U[:,1].reshape(-1,1).to(self.device)
+        w = U[:,2].reshape(-1,1).to(self.device)
+
+        return u, v, w
+
+    def compute_F(self, u, v, w, X, Y, Z, eye=None):
+        if eye is None:
+            eye = torch.eye(3).repeat(X.shape[0],1,1).to(self.device)
+        # Compute the gradient of U
+        Ux = autograd.grad(u, X, torch.ones([X.shape[0], 1]).to(self.device),retain_graph=True, create_graph=True)[0]
+        Uy = autograd.grad(u, Y, torch.ones([Y.shape[0], 1]).to(self.device),retain_graph=True, create_graph=True)[0]
+        Uz = autograd.grad(u, Z, torch.ones([Z.shape[0], 1]).to(self.device),retain_graph=True, create_graph=True)[0]
+
+        # Compute the gradient of V
+        Vx = autograd.grad(v, X, torch.ones([X.shape[0], 1]).to(self.device),retain_graph=True, create_graph=True)[0]
+        Vy = autograd.grad(v, Y, torch.ones([Y.shape[0], 1]).to(self.device),retain_graph=True, create_graph=True)[0]
+        Vz = autograd.grad(v, Z, torch.ones([Z.shape[0], 1]).to(self.device),retain_graph=True, create_graph=True)[0]
+        
+        # Compute the gradient of W
+        Wx = autograd.grad(w, X, torch.ones([X.shape[0], 1]).to(self.device),retain_graph=True, create_graph=True)[0]
+        Wy = autograd.grad(w, Y, torch.ones([Y.shape[0], 1]).to(self.device),retain_graph=True, create_graph=True)[0]
+        Wz = autograd.grad(w, Z, torch.ones([Z.shape[0], 1]).to(self.device),retain_graph=True, create_graph=True)[0]
+        
+        grad_u = torch.cat((Ux , Uy, Uz), dim=1).to(torch.float32)
+        grad_v = torch.cat((Vx , Vy, Vz), dim=1).to(torch.float32)
+        grad_w = torch.cat((Wx , Wy, Wz), dim=1).to(torch.float32)
+
+        gradU = torch.cat((grad_u, grad_v, grad_w), dim=1).to(torch.float32).reshape(-1,3,3)
+        
+        F = eye + gradU
+
+        return F
+
+    def compute_C(self, F):
+        # Compute the right Cauchy-Green tensor
+        C = torch.matmul(F.transpose(1,2), F)
+        return C
+        
+    def compute_J(self, C):
+        # Compute the determinant of C
+        detC = torch.linalg.det(C)
+        J = torch.sqrt(detC)
+        return J
+    
+
+    def compute_S(self, C, material, eye ):
+        C=C.cpu()
+        J = self.compute_J(C)
+
+        invC = torch.linalg.inv(C).to(self.device)
+
+        num_points = C.shape[0]
+
+        # Compute the second Piola-Kirchhoff tensor
+        if material == 'Neo-Hookean-ONSAS':
+            num_points = C.shape[0]
+            JTerm = (J*(J-1)).reshape(num_points,1,1)
+            S = self.mu*(eye - invC ) + self.bulk * JTerm * invC 
+        elif material == "Neo-Hookean-FEBIO":
+            S = self.lame1 * (eye - invC) + self.lame2 * torch.log(J).reshape(num_points,1,1).to(self.device) * invC
+
+        elif material == 'Mooney-Rivlin':
+            S = self.mu * (C - eye) + self.bulk * (J - eye) * invC + self.kappa * (J - eye)**2 * invC
+        
+        return S.to(self.device)
+
+    def compute_P(self, F, S):
+        # Compute the first Piola-Kirchhoff tensor
+        P  = torch.matmul(F.cpu(),S.cpu())
+        return P.to(self.device)
+
+    def compute_div_P(self, P, X, Y, Z):
+
+        
+        ## Computing derivative of each component of P        
+        P11 = P[:,0,0].reshape(-1,1)
+        P12 = P[:,0,1].reshape(-1,1)
+        P13 = P[:,0,2].reshape(-1,1)
+        P11x = autograd.grad(P11, X, torch.ones([X.shape[0], 1]).to(self.device),retain_graph=True, create_graph=True)[0]
+        P12y = autograd.grad(P12, Y, torch.ones([Y.shape[0], 1]).to(self.device),retain_graph=True, create_graph=True)[0]
+        P13z = autograd.grad(P13, Z, torch.ones([Z.shape[0], 1]).to(self.device),retain_graph=True, create_graph=True)[0]
+
+        P21 = P[:,1,0].reshape(-1,1)
+        P22 = P[:,1,1].reshape(-1,1)
+        P23 = P[:,1,2].reshape(-1,1)
+        P21x = autograd.grad(P21, X, torch.ones([X.shape[0], 1]).to(self.device),retain_graph=True, create_graph=True)[0]
+        P22y = autograd.grad(P22, Y, torch.ones([Y.shape[0], 1]).to(self.device),retain_graph=True, create_graph=True)[0]
+        P23z = autograd.grad(P23, Z, torch.ones([Z.shape[0], 1]).to(self.device),retain_graph=True, create_graph=True)[0]
+
+        P31 = P[:,2,0].reshape(-1,1)
+        P32 = P[:,2,1].reshape(-1,1)
+        P33 = P[:,2,2].reshape(-1,1)
+        P31x = autograd.grad(P31, X, torch.ones([X.shape[0], 1]).to(self.device),retain_graph=True, create_graph=True)[0]
+        P32y = autograd.grad(P32, Y, torch.ones([Y.shape[0], 1]).to(self.device),retain_graph=True, create_graph=True)[0]
+        P33z = autograd.grad(P33, Z, torch.ones([Z.shape[0], 1]).to(self.device),retain_graph=True, create_graph=True)[0]
+
+        ## Adding derivatives to compone the divergence of each vector
+        divP1 = P11x + P12y + P13z
+        divP2 = P21x + P22y + P23z
+        divP3 = P31x + P32y + P33z
+
+        ## Concatenating the divergence of each vector
+        divP = torch.cat((divP1, divP2, divP3), dim=1).to(torch.float32)        
+        return divP
+    
+    def compute_loss_symmetry(self, F, P):
+        # symmetry of the tensor FtP
+        F_transpose = torch.transpose(F, 1, 2)
+        P_transpose = torch.transpose(P, 1, 2)
+        PFt = torch.matmul(P, F_transpose)
+        FPt = torch.matmul(F, P_transpose)
+        # Computing the loss of the symmetry of the tensor FtP
+        loss_symmetry = self.loss_function(PFt, FPt)
+        return loss_symmetry
+    
+
+    def loss(self,  pos_real, despl_real, pos_f, save = False):
+        loss_d  = self.loss_data(pos_real,despl_real, save)
+        loss_physics, loss_symmetry  = self.loss_physics(pos_f, save)
+       
+        # weights should sum 1
+        loss_val = loss_d + loss_physics + loss_symmetry #+  loss_bc
+        if save:
+            #self.params_history["lame1"].append(self.lame1.to('cpu').detach().numpy())
+            self.params_history["lame2"].append(self.lame2.to('cpu').detach().numpy())
+            self.loss_history["Total"].append(loss_val.to('cpu').detach().numpy())
+
+        return loss_val
+
+    # def step_closure(self, dataset=breast_dataset):
+        
+    #     optimizer.zero_grad()
+        
+    #     loss = self.loss(dataset, True)
+        
+    #     loss.backward()
+        
+    #     self.iter += 1
+
+    #     if True:
+    #         print(
+    #             'Optim iter: %d, Loss: %.6f' %
+    #             (   
+    #                 self.iter,
+    #                 loss.cpu().detach().numpy(),
+    #             )
+    #         )
+        
+    #     return loss
+    
+    def compute_dif_euclidean_distances(self, dataset):
+        "Computes the difference between the displacement field of the neural network and the ground truth"
+
+        # Extract validation dataset
+        dataloader = dataset.validation_dataloader
+        batch_size = dataloader.batch_size
+
+        # Compute [d_nn[0] - d_ground_truths[0], d_nn[1] - d_ground_truths[1], d_nn[2] - d_ground_truths[2]]
+        # [u_nn - u_gt, v_nn - v_gt, w_nn - w_gt] for each point
+        # Sotres the subtraction of the displacement field of the neural network and the ground truth
+        euclidean_distances = np.zeros((len(dataset.validation_dataset), 3))
+        
+        for idx, data in enumerate(dataloader):
+            data = data.to(self.device)
+            data.requires_grad = False
+
+            d_nn = self(data[:, dataset.position_indexes])
+            d_ground_truths = data[:, dataset.displacement_indexes] 
+            d_diff = (d_nn -  d_ground_truths).to('cpu').detach().numpy()
+
+            indexes_to_fill_min, indexes_to_fill_max = idx * batch_size, (idx + 1) * batch_size
+            euclidean_distances[indexes_to_fill_min : indexes_to_fill_max] = d_diff
+            
+        norm_euclidean_distances = np.linalg.norm(euclidean_distances, axis=1)
+
+        return euclidean_distances, norm_euclidean_distances
+
+    def compute_euclidean_mean_error(self, dataset):
+        "Computes MEE = mean(||d_nn - d_gt||)"
+
+        euclidean_distances, norm_euclidean_distances = self.compute_dif_euclidean_distances(dataset)
+
+        mean_euclidean_error = np.mean(norm_euclidean_distances, axis=0)
+
+        return mean_euclidean_error, euclidean_distances
+    
+    def compute_relative_euclidean_mean_error(self, dataset):
+        "Computes MREE = mean(||d_nn - d_gt|| / ||d_gt||)"
+
+        # ||d_nn - d_gt|| 
+        _, norm_euclidean_distances = self.compute_dif_euclidean_distances(dataset)
+
+        # ||d_gt||
+        d_gt = dataset.validation_dataset[:][:, dataset.displacement_indexes]
+        norm_d_gt = np.linalg.norm(d_gt, axis=1)
+
+        # Find indexes where norm is not zero 
+        not_null_disp_indexes = np.where(norm_d_gt != 0)[0]
+
+        relative_euclidean_error = norm_euclidean_distances[not_null_disp_indexes] / norm_d_gt[not_null_disp_indexes]
+        mean_relative_euclidean_error = np.mean(relative_euclidean_error, axis=0)
+
+        return mean_relative_euclidean_error, relative_euclidean_error
+    
+
+    def compute_dif_euclidean_positions(self, dataset):
+        """
+        Computes the difference between the deformed positions field of the the neural network and the ground truth.
+        ||x_def_nn - x_def_gt|| at each point
+        """
+
+        # Extract validation dataset
+        dataloader = dataset.validation_dataloader
+        batch_size = dataloader.batch_size
+
+        # Compute [d_nn[0] - d_ground_truths[0], d_nn[1] - d_ground_truths[1], d_nn[2] - d_ground_truths[2]]
+        # [u_nn - u_gt, v_nn - v_gt, w_nn - w_gt] for each point
+        # Sotres the subtraction of the displacement field of the neural network and the ground truth
+        dif_euclidean_positions = np.zeros((len(dataset.validation_dataset), 3))
+        
+        for idx, data in enumerate(dataloader):
+            data = data.to(self.device)
+            data.requires_grad = False
+
+            # Compute displacements
+            d_nn = self(data[:, dataset.position_indexes])
+            d_ground_truths = data[:, dataset.displacement_indexes] 
+
+            # Reference position
+            X0 = data[:, dataset.position_indexes]
+            # Compute deformed positions
+            X_def_nn = X0 + d_nn
+            X_def_gt = X0 + d_ground_truths
+            
+            # [x_def_nn - x_def_gt, y_def_nn - y_def_gt, z_def_nn - z_def_gt] for each point
+            X_diff = (X_def_nn -  X_def_gt).to('cpu').detach().numpy()
+
+            indexes_to_fill_min, indexes_to_fill_max = idx * batch_size, (idx + 1) * batch_size
+            dif_euclidean_positions[indexes_to_fill_min : indexes_to_fill_max] = X_diff
+            
+            # TODO: add the abis in the euclidean positions
+
+        return dif_euclidean_positions
+
+    def compute_mean_absolute_error(self, dataset):
+        "Computes MAE = mean(|x_def_nn - x_def_gt|), mean(|y_def_nn - y_def_gt|), mean(|z_def_nn - z_def_gt|)"
+
+        dif_euclidean_positions = self.compute_dif_euclidean_positions(dataset)
+
+        mean_absolute_error = np.mean(np.abs(dif_euclidean_positions), axis=0)
+        return mean_absolute_error, dif_euclidean_positions
+
