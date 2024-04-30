@@ -49,7 +49,39 @@ class Trainer(AbstractTrainer):
                     print("Epoch: ", epoch, "loss: ", loss.item())
 
 
-# train_dict={
+class Trainer_2(AbstractTrainer):
+    def __init__(self,steps_dict) -> None:
+        self.steps_dict=steps_dict
+        
+    def train(self,model,data):
+        #aqui definimos un bucle que recorrerá los steps uno detras de otro 
+        if not data._data_loaded:
+            try:
+                data.load_data()
+            except Exception as e:
+                raise e("no se ha cargado la data")
+        
+        train_init_pos_main,train_disp_main,test_init_pos_main,test_disp_main,position_selected_stresses,return_stress,return_colloc_points=data.prepare_pytorch_data()
+        epoch=0
+        for step_name in self.steps_dict:
+            print(step_name)
+            step=self.steps_dict[step_name]
+            optimizer=step["optim"]
+            #cada step tiene unas cosas unos pasos definidos 
+            if isinstance(optimizer,torch.optim.LBFGS):
+
+                optimizer.step(partial(model.step_closure,optimizer,train_init_pos_main,train_disp_main,return_colloc_points,position_selected_stresses,return_stress))
+
+            else:  
+                for _ in range(step["epochs"]): 
+                    optimizer.zero_grad()
+                    loss=model.loss(train_init_pos_main,train_disp_main,return_colloc_points)
+                    loss.backward()
+                    optimizer.step()
+                    epoch+=1
+                    print("Epoch: ", epoch, "loss: ", loss.item())
+
+# train_dict=
 #     "E_inits":[]
 
 # }

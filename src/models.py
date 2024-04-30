@@ -649,6 +649,62 @@ class PINN_NeoHook(DNN):
         save and self.loss_history["PDE"].append(loss_equilibrium.to('cpu').detach().numpy()) 
 
         return loss_equilibrium, loss_symmetry
+    
+    def compute_gradU(self, X, Y, Z, U, V, W):
+
+        # Compute the gradient of U
+        Ux,Uy,Uz = autograd.grad(U, (X,Y,Z), torch.ones([X.shape[0], 1]).to(self.device),retain_graph=True, create_graph=True)
+        # Uy = autograd.grad(U, Y, torch.ones([Y.shape[0], 1]).to(self.device),retain_graph=True, create_graph=True)[0]
+        # Uz = autograd.grad(U, Z, torch.ones([Z.shape[0], 1]).to(self.device),retain_graph=True, create_graph=True)[0]
+
+        # Compute the gradient of V
+        Vx,Vy,Vz = autograd.grad(V, (X,Y,Z), torch.ones([X.shape[0], 1]).to(self.device),retain_graph=True, create_graph=True)
+        # Vy = autograd.grad(V, Y, torch.ones([Y.shape[0], 1]).to(self.device),retain_graph=True, create_graph=True)[0]
+        # Vz = autograd.grad(V, Z, torch.ones([Z.shape[0], 1]).to(self.device),retain_graph=True, create_graph=True)[0]
+
+        # Compute the gradient of W
+        Wx,Wy,Wz = autograd.grad(W, (X,Y,Z), torch.ones([X.shape[0], 1]).to(self.device),retain_graph=True, create_graph=True)
+        # Wy = autograd.grad(W, Y, torch.ones([Y.shape[0], 1]).to(self.device),retain_graph=True, create_graph=True)[0]
+        # Wz = autograd.grad(W, Z, torch.ones([Z.shape[0], 1]).to(self.device),retain_graph=True, create_graph=True)[0]
+
+        grad_u = torch.cat((Ux , Uy, Uz), dim=1).to(torch.float32)
+        grad_v = torch.cat((Vx , Vy, Vz), dim=1).to(torch.float32)
+        grad_w = torch.cat((Wx , Wy, Wz), dim=1).to(torch.float32)
+
+        gradU = torch.cat((grad_u, grad_v, grad_w), dim=1).to(torch.float32).reshape(-1,3,3)
+
+        return gradU
+    
+    def compute_strain(self, X,Y,Z,u, v, w):
+        # Compute strain components using autograd
+        nabla_U = self.compute_gradU(X,Y,Z,u, v, w).squeeze()
+        strain = 0.5 * (nabla_U + nabla_U.swapaxes(1,2))
+        return strain
+    
+    # def loss_BC(self,pos_reales,sigmas_reales,save=True):
+    #         #aqui tenemos las de Dirichlet y las de Neumann
+    #         # en mi caso que no hay contacto ni nada, pero si tengo nodos fijos!! las de Dirichlet tbn
+
+    #         #en esta implementación voy a imponer las sigmas solo aqui, en una futura, podría meter también
+    #         #las de Dirichlet para poder darles mas peso
+
+    #         #calculamos sobre las posiciones de las sigmas que tenemos, las dadas por el modelo
+    #         # predict U
+    #         X,Y,Z=self.compute_XYZ(pos_reales)
+    #         u, v, w,_=self.compute_displacements(X,Y,Z)
+            
+    #         epsilon = self.compute_strain(X,Y,Z,u, v, w)
+    #         sigma = self.compute_stress(epsilon) 
+    #         #este sigma tiene primera dimension batchsize, y segunda dimension 6
+    #         #que corresponde con: s11,s22,s33,s23,s13,s12
+    #         #le imponemos que sean iguales de modo que aplicamos la loss y ya
+    #         value_loss_BC=self.loss_function(sigma,sigmas_reales.to(self.device))
+
+    #         if save:
+    #             self.loss_history["BC"].append(value_loss_BC.item())#.to('cpu').detach().numpy())
+
+    #         return value_loss_BC
+
 
     def compute_XYZ(self, positions):
         # clone the input data and add AD
@@ -790,7 +846,7 @@ class PINN_NeoHook(DNN):
         loss_physics, loss_symmetry  = self.loss_physics(pos_f, save)
        
         # weights should sum 1
-        loss_val = loss_d + loss_physics + loss_symmetry #+  loss_bc
+        loss_val = loss_d + loss_physics + loss_symmetry 
         if save:
             #self.params_history["lame1"].append(self.lame1.to('cpu').detach().numpy())
             self.params_history["lame2"].append(self.lame2.to('cpu').detach().numpy())
