@@ -7,7 +7,6 @@ class AbstractTrainer(ABC):
     @abstractmethod
     def train():
         raise NotImplementedError
-    
 
 # @dataclass
 # class Step:
@@ -27,7 +26,7 @@ class Trainer(AbstractTrainer):
                 data.load_data()
             except Exception as e:
                 raise e("no se ha cargado la data")
-        
+
         train_init_pos_main,train_disp_main,test_init_pos_main,test_disp_main,position_selected_stresses,return_stress,return_colloc_points=data.prepare_pytorch_data()
         epoch=0
         for step_name in self.steps_dict:
