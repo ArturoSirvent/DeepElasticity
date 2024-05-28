@@ -166,7 +166,20 @@ cython_debug/
 my_graph.pdf
 
 #data 
-data
+*.zip
+*.dbb
+*.full
+*.ldhi
+*.mntr
+*.bmp
+*.rdb  
+*.rst 
+*.esav  
+*.err  
+*.db  
+*.DSP  
+*.r001
+*.stat
 
 #funcs 
 
