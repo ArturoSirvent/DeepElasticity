@@ -556,8 +556,8 @@ def unnormalize(X_tensor, X_min, X_max):
 class DataNeo_2:
     folder: str
     load_stage: int
-    base_dir:str = "/home/arturo/Documents/programacion_stuff/DeepElasticity/data/002-Neo"
-    basic_dir= "/home/arturo/Documents/programacion_stuff/DeepElasticity/data/001-LinearElasticity"
+    base_dir:str = "/home/arturosf/Documentos/repos/DeepElasticity/data/002-Neo"
+    basic_dir= "/home/arturosf/Documentos/repos/DeepElasticity/data/001-LinearElasticity"
     E: str = None
     #===== not seteables ====
     initialPosition_data_pd: pd.DataFrame =None
