@@ -576,7 +576,7 @@ class PINN_mixedForm(DNN):
 
 # modelo hiperelastico Neo-Hookeano   
 class PINN_NeoHook(DNN):
-    def __init__(self, layers,init_lame1,init_lame2):
+    def __init__(self, layers,init_lame1,init_lame2,train_lame1=False,train_lame2=True):
         super().__init__(layers)
         self.device= "cuda" if torch.cuda.is_available() else "cpu"
         self.to(self.device)    
@@ -586,10 +586,19 @@ class PINN_NeoHook(DNN):
         
         'Initialize iterator'
         self.iter = 0
-        
+        self.train_lame1=train_lame1
+        self.train_lame2=train_lame2
         'Initialize our new parameter mu and bulk as tensor (Inverse problem)' 
-        self.lame1 =torch.tensor([float(init_lame1)]).to(self.device)# nn.Parameter(torch.tensor([float(init_lame1)], requires_grad=True).float().to(device))
-        self.lame2 = nn.Parameter(torch.tensor([float(init_lame2)], requires_grad=True).float().to(self.device))
+        if train_lame1:
+            self.lame1 = nn.Parameter(torch.tensor([float(init_lame1)], requires_grad=True).float().to(self.device))
+        else:
+            self.lame1 =torch.tensor([float(init_lame1)]).to(self.device)
+        if train_lame2:
+            self.lame2 = nn.Parameter(torch.tensor([float(init_lame2)], requires_grad=True).float().to(self.device))
+        else:
+            self.lame2 =torch.tensor([float(init_lame2)]).to(self.device)
+        #self.lame1 =torch.tensor([float(init_lame1)]).to(self.device)# nn.Parameter(torch.tensor([float(init_lame1)], requires_grad=True).float().to(device))
+        #self.lame2 = nn.Parameter(torch.tensor([float(init_lame2)], requires_grad=True).float().to(self.device))
         #self.density = torch.tensor([float(rho)], requires_grad=True).float()
         
         'History of losses'
@@ -599,7 +608,12 @@ class PINN_NeoHook(DNN):
                              "BC": [],
                              "Total":[]}
         'Parameters trials'
-        self.params_history = {"lame2": [] } #"lame1": [],
+        self.params_history ={}
+        if train_lame1:
+            self.params_history["lame1"] = []
+        if train_lame2:
+            self.params_history["lame2"] = []
+
                                 
         
     
@@ -841,15 +855,19 @@ class PINN_NeoHook(DNN):
         return loss_symmetry
     
 
-    def loss(self,  pos_real, despl_real, pos_f, save = False):
+    def loss(self,  pos_real, despl_real, pos_f, save = True):
         loss_d  = self.loss_data(pos_real,despl_real, save)
         loss_physics, loss_symmetry  = self.loss_physics(pos_f, save)
        
         # weights should sum 1
         loss_val = loss_d + loss_physics + loss_symmetry 
         if save:
+            if self.train_lame1:
+                self.params_history["lame1"].append(self.lame1.to('cpu').detach().numpy())
+            if self.train_lame2:
+                self.params_history["lame2"].append(self.lame2.to('cpu').detach().numpy())
             #self.params_history["lame1"].append(self.lame1.to('cpu').detach().numpy())
-            self.params_history["lame2"].append(self.lame2.to('cpu').detach().numpy())
+            #self.params_history["lame2"].append(self.lame2.to('cpu').detach().numpy())
             self.loss_history["Total"].append(loss_val.to('cpu').detach().numpy())
 
         return loss_val
