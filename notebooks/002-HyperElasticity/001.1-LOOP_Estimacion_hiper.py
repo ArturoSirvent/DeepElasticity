@@ -80,14 +80,15 @@ for i , (e_val_str, e_val) in enumerate(zip(E_values_str,E_values_MPa)):
                     trainer.train(pinn,data)
 
                     plt.figure(figsize=(10,5))
-                    plt.plot(np.array(pinn.loss_history["PDE"]),label="PDE")
+                    plt.plot(np.array(pinn.loss_history["PDE"])*1e5,label="PDE")
                     plt.plot(np.array(pinn.loss_history["Data"]),label="Data")
+                    plt.plot(np.array(pinn.loss_history["symmetry"])*1e13,label="symmetry")
                     plt.yscale("log")
                     plt.legend()
                     plt.xlabel("Epoch")
                     plt.ylabel("Loss")
                     plt.title(f"Loss E value: {e_val_str}, Lame1: {lame1_init} Step: {j}")
-                    plt.savefig(f"./results/LOSS_E_value_{e_val_str}_lame1_{lame1_init}_step_{j}_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.png")
+                    plt.savefig(f"./results_2/LOSS_E_value_{e_val_str}_lame1_{lame1_init}_step_{j}_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.png")
                     plt.close()
 
 
@@ -98,7 +99,7 @@ for i , (e_val_str, e_val) in enumerate(zip(E_values_str,E_values_MPa)):
                     plt.xlabel("Epoch")
                     plt.ylabel("Lame1")
                     plt.title(f"lame1 value: {lambda_}, Lame1: {lame1_init} Step: {j}")
-                    plt.savefig(f"./results/PARAMS_E_value_{e_val_str}_lame1_{lame1_init}_step_{j}_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.png")
+                    plt.savefig(f"./results_2/PARAMS_E_value_{e_val_str}_lame1_{lame1_init}_step_{j}_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.png")
                     plt.close()
 
                     plt.figure(figsize=(10,5))
@@ -109,11 +110,11 @@ for i , (e_val_str, e_val) in enumerate(zip(E_values_str,E_values_MPa)):
                     plt.ylabel("Lame1")
                     plt.title(f"lame1 value: {lambda_}, Lame1: {lame1_init} Step: {j}")
                     plt.ylim(-0.1,0.4)
-                    plt.savefig(f"./results/PARAMS_zoom_E_value_{e_val_str}_lame1_{lame1_init}_step_{j}_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.png")
+                    plt.savefig(f"./results_2/PARAMS_zoom_E_value_{e_val_str}_lame1_{lame1_init}_step_{j}_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.png")
                     plt.close()
 
 
-                    with open(f"./results/pickles/pinn_object_{e_val_str}_lame1_{lame1_init}_step_{j}.pkl","wb") as f:
+                    with open(f"./results_2/pickles/pinn_object_{e_val_str}_lame1_{lame1_init}_step_{j}.pkl","wb") as f:
                         pickle.dump(pinn.loss_history,f)
                 except Exception as e:
                     print(f"Error: {e}")
@@ -131,14 +132,16 @@ for i , (e_val_str, e_val) in enumerate(zip(E_values_str,E_values_MPa)):
                     trainer.train(pinn,data)
 
                     plt.figure(figsize=(10,5))
-                    plt.plot(np.array(pinn.loss_history["PDE"]),label="PDE")
+                    plt.plot(np.array(pinn.loss_history["PDE"])*1e5,label="PDE")
                     plt.plot(np.array(pinn.loss_history["Data"]),label="Data")
+                    plt.plot(np.array(pinn.loss_history["symmetry"])*1e13,label="symmetry")
+
                     plt.yscale("log")
                     plt.legend()
                     plt.xlabel("Epoch")
                     plt.ylabel("Loss")
                     plt.title(f"Loss E value: {e_val_str}, Lame2: {lame2_init} Step: {j}")
-                    plt.savefig(f"./results/LOSS_E_value_{e_val_str}_lame2_{lame2_init}_step_{j}_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.png")
+                    plt.savefig(f"./results_2/LOSS_E_value_{e_val_str}_lame2_{lame2_init}_step_{j}_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.png")
                     plt.close()
 
 
@@ -149,7 +152,7 @@ for i , (e_val_str, e_val) in enumerate(zip(E_values_str,E_values_MPa)):
                     plt.xlabel("Epoch")
                     plt.ylabel("Lame2")
                     plt.title(f"lame2 value: {mu}, Lame2: {lame2_init} Step: {j}")
-                    plt.savefig(f"./results/PARAMS_E_value_{e_val_str}_lame2_{lame2_init}_step_{j}_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.png")
+                    plt.savefig(f"./results_2/PARAMS_E_value_{e_val_str}_lame2_{lame2_init}_step_{j}_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.png")
                     plt.close()
 
                     plt.figure(figsize=(10,5))
@@ -160,12 +163,12 @@ for i , (e_val_str, e_val) in enumerate(zip(E_values_str,E_values_MPa)):
                     plt.ylabel("Lame2")
                     plt.title(f"lame2 value: {mu}, Lame2: {lame2_init} Step: {j}")
                     plt.ylim(-0.1,0.4)
-                    plt.savefig(f"./results/PARAMS_zoom_E_value_{e_val_str}_lame2_{lame2_init}_step_{j}_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.png")
+                    plt.savefig(f"./results_2/PARAMS_zoom_E_value_{e_val_str}_lame2_{lame2_init}_step_{j}_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.png")
                     plt.close()
 
 
 
-                    with open(f"./results/pickles/pinn_object_{e_val_str}_lame2_{lame2_init}_step_{j}.pkl","wb") as f:
+                    with open(f"./results_2/pickles/pinn_object_{e_val_str}_lame2_{lame2_init}_step_{j}.pkl","wb") as f:
                         pickle.dump(pinn.loss_history,f)
                 except Exception as e:
                     print(f"Error: {e}")

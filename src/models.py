@@ -600,7 +600,7 @@ class PINN_NeoHook(DNN):
         #self.lame1 =torch.tensor([float(init_lame1)]).to(self.device)# nn.Parameter(torch.tensor([float(init_lame1)], requires_grad=True).float().to(device))
         #self.lame2 = nn.Parameter(torch.tensor([float(init_lame2)], requires_grad=True).float().to(self.device))
         #self.density = torch.tensor([float(rho)], requires_grad=True).float()
-        
+        self.bulk= self.lame1 + 2/3 * self.lame2
         'History of losses'
         self.loss_history = {"Data": [],
                              "PDE": [],
@@ -860,7 +860,7 @@ class PINN_NeoHook(DNN):
         loss_physics, loss_symmetry  = self.loss_physics(pos_f, save)
        
         # weights should sum 1
-        loss_val = loss_d + loss_physics + loss_symmetry 
+        loss_val = loss_d + 1e5*loss_physics + 1e13*loss_symmetry 
         if save:
             if self.train_lame1:
                 self.params_history["lame1"].append(self.lame1.to('cpu').detach().numpy())
