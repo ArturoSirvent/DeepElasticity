@@ -798,7 +798,7 @@ class PINN_NeoHook(DNN):
             JTerm = (J*(J-1)).reshape(num_points,1,1)
             S = self.mu*(eye - invC ) + self.bulk * JTerm * invC 
         elif material == "Neo-Hookean-FEBIO":
-            S = self.lame1 * (eye - invC) + self.lame2 * torch.log(J).reshape(num_points,1,1).to(self.device) * invC
+            S = self.lame2 * (eye - invC) + self.lame1 * torch.log(J).reshape(num_points,1,1).to(self.device) * invC
 
         elif material == 'Mooney-Rivlin':
             S = self.mu * (C - eye) + self.bulk * (J - eye) * invC + self.kappa * (J - eye)**2 * invC
@@ -860,7 +860,7 @@ class PINN_NeoHook(DNN):
         loss_physics, loss_symmetry  = self.loss_physics(pos_f, save)
        
         # weights should sum 1
-        loss_val = loss_d + 1e5*loss_physics + 1e13*loss_symmetry 
+        loss_val = loss_d + loss_physics +loss_symmetry 
         if save:
             if self.train_lame1:
                 self.params_history["lame1"].append(self.lame1.to('cpu').detach().numpy())

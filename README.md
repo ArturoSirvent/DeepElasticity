@@ -23,3 +23,11 @@ Este repositorio contiene los datos y el código para el estudio de la aplicaci�
     - utils/data.py: Es la clase que agrupa los datos usados en un objeto para usarse para el entrenamiento.  
     - models.py : Los modelos definidos para el entrenamiento. Tenemos la dense network y la PINN también. 
     - train.py : La clase encargada de entrar a la PINN, engloba el bucle de entrenamiento etc.   
+
+
+
+- En notebook/002 / results_ tenemos lo siguiente
+    - El results normal fue con los parametros de lame cambiados sin querer y sin pesos en la funcion de perdida
+    - El results_2 fue con lo parametros de lame cambiados sin querer y con los pesos `loss_val = loss_d + 1e5*loss_physics + 1e13*loss_symmetry` 
+    - El results_3 es con los parametros ya bien: `S = self.lame2 * (eye - invC) + self.lame1 * torch.log(J).reshape(num_points,1,1).to(self.device) * invC` y con los pesos del 2 `loss_val = loss_d + 1e5*loss_physics + 1e13*loss_symmetry`. 
+    - El results_4 será igual pero sin los pesos en la loss.
